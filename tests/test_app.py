@@ -1,12 +1,11 @@
-import os, pytest
-pytest.importorskip("streamlit")
+import pytest
 from pathlib import Path
-from speedy.config import MODEL_PATH
+pytest.importorskip("streamlit")
+ROOT = Path(__file__).parents[1]
 
 
-@pytest.mark.skipif(not Path(MODEL_PATH).exists(), reason="train the model first (python -m speedy.train)")
-def test_app_runs_without_exception():
+@pytest.mark.skipif(not (ROOT / "app_artifacts" / "evaluation.json").exists(), reason="run python -m speedy.train first")
+def test_app_runs_from_bundle_only():
     from streamlit.testing.v1 import AppTest
-    at = AppTest.from_file(str(Path(__file__).parents[1] / "app.py"), default_timeout=60).run()
-    assert not at.exception
-    assert len(at.metric) >= 2 and len(at.tabs) == 4
+    at = AppTest.from_file(str(ROOT / "app" / "streamlit_app.py"), default_timeout=60).run()
+    assert not at.exception and len(at.metric) == 3 and len(at.tabs) == 4

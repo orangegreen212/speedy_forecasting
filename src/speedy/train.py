@@ -2,13 +2,13 @@
 import argparse, json, platform
 import joblib, numpy as np, pandas as pd, sklearn
 from . import __version__
-from .config import DATA_DIR, MODEL_DIR, OUTPUT_DIR
+from .config import DATA_DIR, MODEL_DIR, OUTPUT_DIR, ROOT
 from .data import load_panel
 from .evaluate import run_evaluation
 from .pipeline import build_pipeline
 
 
-def train_and_save(data_dir=DATA_DIR, model_dir=MODEL_DIR, prophet=True, n_boot=1000, out_dir=OUTPUT_DIR):
+def train_and_save(data_dir=DATA_DIR, model_dir=MODEL_DIR, prophet=True, n_boot=1000, out_dir=OUTPUT_DIR, end_date="2013-12-06"):
     panel = load_panel(data_dir)
     res = run_evaluation(panel, prophet=prophet, n_boot=n_boot)
     alpha, wn, wr, wp = res["final_cfg"]
@@ -23,7 +23,19 @@ def train_and_save(data_dir=DATA_DIR, model_dir=MODEL_DIR, prophet=True, n_boot=
     arrays = res.pop("_arrays")
     res["metadata"] = meta
     (out_dir / "evaluation.json").write_text(json.dumps(res, indent=2, default=float))
+    export_bundle(artifact, res, panel, ROOT / "app_artifacts", end_date)
     return artifact, res, arrays
+
+
+def export_bundle(artifact, res, panel, bundle_dir, end_date):
+    """Everything the Streamlit app needs, so it runs without the model, Prophet or raw data:
+    precomputed forecasts, evaluation (+metadata, calibration) and weekly actuals aggregated to store-week."""
+    from .inference import forecast_weekly, forecast_totals
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+    w = forecast_weekly(artifact, end_date); t = forecast_totals(artifact, w)
+    w.to_csv(bundle_dir / "forecast_by_store.csv", index=False); t.to_csv(bundle_dir / "forecast_total.csv", index=False)
+    (bundle_dir / "evaluation.json").write_text(json.dumps(res, indent=2, default=float))
+    panel[["Store", "Date", "Weekly_Sales"]].to_csv(bundle_dir / "actuals_store_week.csv", index=False)
 
 
 def main(argv=None):
