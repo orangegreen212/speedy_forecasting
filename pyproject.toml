@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "speedy-forecasting"
+version = "1.0.0"
+description = "Weekly store-level sales forecasting pipeline"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["src"]
