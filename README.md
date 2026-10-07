@@ -5,11 +5,11 @@ Forecasts weekly sales for each of 45 stores (blend of seasonal-naive, pooled ri
 ## Quick start
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt && pip install -e .
+pip install -r requirements-dev.txt && pip install -e .
 # put features.csv, sales.csv, stores.csv in data/raw/  (git-ignored)  OR  export SPEEDY_DATA_DIR=/path/to/folder
 python -m speedy.train                          # evaluate + fit + save models/forecaster.joblib, outputs/evaluation.json
 python -m speedy.score --end-date 2013-12-06    # outputs/forecast_by_store.csv, outputs/forecast_total.csv
-streamlit run app/streamlit_app.py       # dashboard; needs app_artifacts/ (created by train, committed)
+streamlit run app.py        # dashboard; needs app_artifacts/ (created by train, committed)
 pytest -q                                       # unit tests (RUN_SLOW=1 adds the Prophet test)
 ```
 Environment variables: `SPEEDY_DATA_DIR`, `SPEEDY_MODEL_DIR`, `SPEEDY_OUTPUT_DIR`. No absolute paths in the code.
@@ -35,5 +35,5 @@ Environment variables: `SPEEDY_DATA_DIR`, `SPEEDY_MODEL_DIR`, `SPEEDY_OUTPUT_DIR
 
 ## Deploy the dashboard (Streamlit Community Cloud)
 1. Run `python -m speedy.train` locally, then commit `app_artifacts/` (forecasts, evaluation.json, weekly actuals). The model file and raw data stay out of git.
-2. New app -> your repo -> **Main file path: `app/streamlit_app.py`** (its `app/requirements.txt` is light: no Prophet).
+2. New app -> your repo -> Main file path `app.py` (or `app/streamlit_app.py`). The root `requirements.txt` is light (no Prophet); dev deps are in `requirements-dev.txt`.
 3. `app_artifacts/actuals_store_week.csv` is company sales data aggregated to store-week: delete it before pushing to a public repo (the app then shows forecasts without history).
