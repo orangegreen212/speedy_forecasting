@@ -9,6 +9,7 @@ pip install -r requirements.txt && pip install -e .
 # put features.csv, sales.csv, stores.csv in data/raw/  (git-ignored)  OR  export SPEEDY_DATA_DIR=/path/to/folder
 python -m speedy.train                          # evaluate + fit + save models/forecaster.joblib, outputs/evaluation.json
 python -m speedy.score --end-date 2013-12-06    # outputs/forecast_by_store.csv, outputs/forecast_total.csv
+streamlit run app.py                            # interactive dashboard (needs the trained model; data/raw optional for actuals)
 pytest -q                                       # unit tests (RUN_SLOW=1 adds the Prophet test)
 ```
 Environment variables: `SPEEDY_DATA_DIR`, `SPEEDY_MODEL_DIR`, `SPEEDY_OUTPUT_DIR`. No absolute paths in the code.
@@ -23,6 +24,7 @@ Environment variables: `SPEEDY_DATA_DIR`, `SPEEDY_MODEL_DIR`, `SPEEDY_OUTPUT_DIR
 | `src/speedy/train.py` / `score.py` / `inference.py` | training CLI, scoring CLI, stable inference API |
 | `notebooks/01_eda.ipynb`, `02_modelling.ipynb` | EDA and evidence; both import the package, define no features |
 | `docs/business_memo.md` | recommendation first, methodology as evidence |
+| `app.py` | Streamlit dashboard: totals, single store, accuracy with CIs, CSV download |
 | `tests/` | unit tests incl. feature purity, no-leakage, save/load round trip |
 
 ## Design decisions
