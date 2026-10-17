@@ -3,7 +3,7 @@ import argparse, json, platform
 import joblib, numpy as np, pandas as pd, sklearn
 from . import __version__
 from .config import DATA_DIR, MODEL_DIR, OUTPUT_DIR, ROOT
-from .data import load_panel
+from .data import load_panel, data_quality_report
 from .evaluate import run_evaluation
 from .pipeline import build_pipeline
 
@@ -11,8 +11,8 @@ from .pipeline import build_pipeline
 def train_and_save(data_dir=DATA_DIR, model_dir=MODEL_DIR, prophet=True, n_boot=1000, out_dir=OUTPUT_DIR, end_date="2013-12-06"):
     panel = load_panel(data_dir)
     res = run_evaluation(panel, prophet=prophet, n_boot=n_boot)
-    alpha, wn, wr, wp = res["final_cfg"]
-    pipe = build_pipeline(alpha=alpha, w_naive=wn / 10, w_ridge=wr / 10, w_prophet=wp / 10)
+    alpha, hk, dk, wn, wr, wp, wh = res["final_cfg"]
+    pipe = build_pipeline(alpha=alpha, holt_key=hk, drift_key=dk, w_naive=wn / 10, w_ridge=wr / 10, w_prophet=wp / 10, w_holt=wh / 10, store_scale=res["store_scale"])
     pipe.fit(panel, panel["Weekly_Sales"])
     meta = {"version": __version__, "trained_through": str(panel["Date"].max().date()), "n_weeks": int(panel["Date"].nunique()),
             "n_stores": int(panel["Store"].nunique()), "sklearn": sklearn.__version__, "python": platform.python_version(),
@@ -21,6 +21,7 @@ def train_and_save(data_dir=DATA_DIR, model_dir=MODEL_DIR, prophet=True, n_boot=
     model_dir.mkdir(parents=True, exist_ok=True); out_dir.mkdir(parents=True, exist_ok=True)
     joblib.dump(artifact, model_dir / "forecaster.joblib")
     arrays = res.pop("_arrays")
+    (out_dir / "data_quality.json").write_text(json.dumps(data_quality_report(data_dir), indent=2, default=float))
     res["metadata"] = meta
     (out_dir / "evaluation.json").write_text(json.dumps(res, indent=2, default=float))
     export_bundle(artifact, res, panel, ROOT / "app_artifacts", end_date)
@@ -46,7 +47,7 @@ def main(argv=None):
     from pathlib import Path
     art, res, _ = train_and_save(Path(a.data_dir), Path(a.model_dir), prophet=not a.no_prophet)
     print("saved", Path(a.model_dir) / "forecaster.joblib"); print(json.dumps(art["metadata"], indent=2, default=str))
-    print("selected cfg (alpha, w_naive, w_ridge, w_prophet x10):", res["final_cfg"])
+    print("selected cfg (alpha, holt, drift, w_naive, w_ridge, w_prophet, w_holt x10):", res["final_cfg"])
 
 
 if __name__ == "__main__":

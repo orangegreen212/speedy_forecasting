@@ -25,7 +25,13 @@ Environment variables: `SPEEDY_DATA_DIR`, `SPEEDY_MODEL_DIR`, `SPEEDY_OUTPUT_DIR
 | `notebooks/01_eda.ipynb`, `02_modelling.ipynb` | EDA and evidence; both import the package, define no features |
 | `docs/business_memo.md` | recommendation first, methodology as evidence |
 | `app/streamlit_app.py`, `app_artifacts/` | Streamlit dashboard: totals, single store, accuracy with CIs, CSV download |
-| `tests/` | unit tests incl. feature purity, no-leakage, save/load round trip |
+| `tests/` | unit tests + `test_audit.py` (leakage and hygiene regression tests) |
+
+## Data policies (see `notebooks/01_eda.ipynb`)
+* **Returns** (negative dept-week rows) stay **net** in store-week sales (`load_panel(returns="net")`; "clip"/"drop" for sensitivity). Effect on totals ~0.001%.
+* **Anomalies:** only non-holiday extremes are winsorised, using the training slice only (`speedy/cleaning.py`). Ablation: no material effect.
+* **`features.csv`** is never used (it contains rows after the sales end, i.e. 'future' data).
+* **Store trends:** seasonal naive with shrunk, damped drift plus damped Holt trend on deseasonalised log sales; chosen walk-forward.
 
 ## Design decisions
 * **No data leakage by construction:** features are calendar-only; exogenous columns (CPI, temperature, MarkDowns) are unknown for the forecast period and are not used. A test scrambles all post-origin data and asserts forecasts are bit-identical.

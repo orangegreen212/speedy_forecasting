@@ -25,8 +25,8 @@ def test_paired_difference_zero_for_identical_models():
 
 
 def test_candidate_weights_sum_to_ten_and_prophet_off():
-    assert all(c[1] + c[2] + c[3] == 10 for c in candidate_cfgs())
-    assert all(c[3] == 0 for c in candidate_cfgs(prophet=False))
+    assert all(sum(c[3:]) == 10 for c in candidate_cfgs())
+    assert all(c[5] == 0 for c in candidate_cfgs(prophet=False)) and all(c[6] == 0 and c[2] == "d0" for c in candidate_cfgs(allow_trend=False))
 
 
 def test_interval_multipliers_order_and_coverage():

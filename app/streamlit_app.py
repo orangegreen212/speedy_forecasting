@@ -55,6 +55,18 @@ with tab3:
     d = ev["oof_skill_vs_naive_WMAPE_diff"]["naive_minus_blend"]
     st.write(f"Blend beats seasonal naive by {d[0]:.2%} WMAPE (95% CI {d[1]:.2%} to {d[2]:.2%}).")
     st.write("Quarter total error (actual/forecast - 1):", [f"{x:+.1%}" for x in ev["quarter_total_error"]])
+    bc = ev["bias_correction"]; g = bc["candidates"].get(str(bc["adopted_lam"]), {}).get("WMAPE_gain_vs_uncorrected")
+    if bc["adopted_lam"] == 0:
+        st.write("Extra type-level bias correction tested and NOT adopted (gain not distinguishable from zero).")
+    if bc["adopted_lam"] > 0 and g:
+        st.write(f"Bias correction (lambda={bc['adopted_lam']}) is applied: WMAPE gain {g[0]:.2%} (95% CI {g[1]:.2%} to {g[2]:.2%}), chosen by a walk-forward test. Residual bias remains slightly negative.")
+    nt = ev["oof_metrics"].get("blend_without_trend_fixes")
+    if nt:
+        m_ = ev["oof_metrics"]["blend_walk_forward"]
+        st.write(f"Store-trend fixes (naive with drift + damped trend): store-week error {m_['WMAPE']:.2%} vs {nt['WMAPE']:.2%} without; per-store annual error {m_['Store_annual_APE']:.2%} vs {nt['Store_annual_APE']:.2%}.")
+    hw = ev.get("holiday_weeks")
+    if hw:
+        d = hw["naive_minus_blend"]; st.write(f"Holiday weeks ({hw['n_weeks']} weeks, one season): blend {hw['blend_WMAPE']:.1%} vs naive {hw['naive_WMAPE']:.1%}; difference CI {d[1]:+.1%} to {d[2]:+.1%}, i.e. not distinguishable.")
     st.write(f"80% band coverage on later, unseen weeks: {ev['coverage_check']['coverage_80']:.0%} (target 80%).")
     st.subheader("Single 58-week year-ahead check (one sample)"); st.dataframe(pd.DataFrame({k: v for k, v in ev["year_ahead"].items() if k != "note"}).T)
 with tab4:
