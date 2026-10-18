@@ -4,9 +4,31 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "speedy-forecasting"
-version = "1.0.0"
+dynamic = ["version"]
 description = "Weekly store-level sales forecasting pipeline"
 requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scikit-learn",
+    "scipy",
+    "joblib",
+    "python-dateutil",
+    "prophet",
+]
+
+[tool.setuptools.dynamic]
+version = {attr = "speedy.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 79
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "N", "I", "B", "C4", "SIM", "UP"]
+
+[tool.ruff.lint.pep8-naming]
+ignore-names = ["X"]  # scikit-learn names the feature matrix X

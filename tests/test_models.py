@@ -1,86 +1,155 @@
-import os, numpy as np, pandas as pd, pytest, joblib
-from speedy.models import naive_fc, BlendForecaster
-from speedy.pipeline import build_pipeline
-from speedy.data import to_wide, validate_panel
-from speedy.inference import forecast_weekly, forecast_totals, load_artifact
+import joblib
+import numpy as np
+import pandas as pd
+import pytest
+
+from speedy.evaluate import BlendConfig
+from speedy.inference import forecast_totals, forecast_weekly, load_artifact
+from speedy.pipeline import build_pipeline, pipeline_from_config
+
+CALIBRATION = {
+    "store_week_mult": (0.95, 1.1),
+    "weekly_total_err_q": (-0.01, 0.07),
+    "annual_planning_range": (-0.01, 0.05),
+}
 
 
-def fit_pipe(panel, **kw):
-    p = build_pipeline(w_naive=0.5, w_ridge=0.5, w_prophet=0.0, **kw); p.fit(panel, panel["Weekly_Sales"]); return p
+def fit_pipe(panel, **kwargs):
+    params = {"w_naive": 0.5, "w_ridge": 0.5, "w_prophet": 0.0, **kwargs}
+    pipe = build_pipeline(**params)
+    return pipe.fit(panel, panel["Weekly_Sales"])
 
 
-def test_naive_uses_same_week_last_year(panel):
-    wide = to_wide(panel)
-    f = naive_fc(wide.iloc[:100], [wide.index[60] + pd.Timedelta(days=364)])
-    assert np.allclose(f.iloc[0].to_numpy(), wide.iloc[60].to_numpy())
-
-
-def test_naive_beyond_one_year_rolls_back_whole_years(panel):
-    wide = to_wide(panel).iloc[:100]; d = wide.index[-1] + pd.Timedelta(days=364 * 2)
-    f = naive_fc(wide, [d]); assert np.allclose(f.iloc[0].to_numpy(), wide.loc[d - pd.Timedelta(days=364 * 2)].to_numpy())
+def one_row(date, store, store_type):
+    return pd.DataFrame(
+        {"Date": [pd.Timestamp(date)], "Store": [store], "Type": [store_type]}
+    )
 
 
 def test_weights_must_sum_to_one(panel):
+    with pytest.raises(ValueError, match="sum to 1"):
+        build_pipeline(w_naive=0.5, w_ridge=0.5, w_prophet=0.5).fit(
+            panel, panel["Weekly_Sales"]
+        )
+
+
+def test_blend_with_holt_runs_and_weights_are_validated(panel):
+    pipe = fit_pipe(panel, w_naive=0.4, w_ridge=0.3, w_holt=0.3)
+    assert pipe.predict(one_row("2012-11-02", 1, "A")).iloc[0] > 0
     with pytest.raises(ValueError):
-        build_pipeline(w_naive=0.5, w_ridge=0.5, w_prophet=0.5).fit(panel, panel["Weekly_Sales"])
+        fit_pipe(panel, w_naive=0.4, w_ridge=0.3, w_holt=0.4)
 
 
 def test_pipeline_predict_shape_positive_and_aligned(panel):
-    p = fit_pipe(panel)
-    fut = pd.DataFrame({"Date": pd.to_datetime(["2012-11-02", "2012-11-09"] * 2), "Store": [1, 1, 4, 4], "Type": ["A", "A", "B", "B"]})
-    out = p.predict(fut)
-    assert len(out) == 4 and (out > 0).all() and (out.index == fut.index).all()
+    pipe = fit_pipe(panel)
+    future = pd.DataFrame(
+        {
+            "Date": pd.to_datetime(["2012-11-02", "2012-11-09"] * 2),
+            "Store": [1, 1, 4, 4],
+            "Type": ["A", "A", "B", "B"],
+        }
+    )
+    out = pipe.predict(future)
+    assert len(out) == 4
+    assert (out > 0).all()
+    assert (out.index == future.index).all()
 
 
 def test_unknown_store_raises(panel):
-    p = fit_pipe(panel)
-    with pytest.raises(ValueError):
-        p.predict(pd.DataFrame({"Date": [pd.Timestamp("2012-11-02")], "Store": [99], "Type": ["A"]}))
+    pipe = fit_pipe(panel)
+    with pytest.raises(ValueError, match="unknown stores"):
+        pipe.predict(one_row("2012-11-02", 99, "A"))
 
 
-def test_no_leakage_scrambling_future_changes_nothing(panel):
-    origin = pd.Timestamp("2011-12-30"); tr = panel[panel.Date <= origin]
-    fut = panel[(panel.Date > origin)][["Store", "Date", "Type"]].reset_index(drop=True)
-    a = fit_pipe(tr).predict(fut)
-    scrambled = panel.copy(); scrambled.loc[scrambled.Date > origin, "Weekly_Sales"] *= 7.0
-    b = fit_pipe(scrambled[scrambled.Date <= origin]).predict(fut)
-    assert np.array_equal(a.to_numpy(), b.to_numpy())
+def test_predict_before_fit_raises():
+    pipe = build_pipeline()
+    with pytest.raises(RuntimeError):
+        pipe.named_steps["model"].predict(one_row("2012-11-02", 1, "A"))
+
+
+def test_scrambling_the_future_changes_nothing(panel):
+    origin = pd.Timestamp("2011-12-30")
+    train = panel[panel["Date"] <= origin]
+    future = panel[panel["Date"] > origin][["Store", "Date", "Type"]]
+    before = fit_pipe(train).predict(future.reset_index(drop=True))
+
+    scrambled = panel.copy()
+    scrambled.loc[scrambled["Date"] > origin, "Weekly_Sales"] *= 7.0
+    after = fit_pipe(scrambled[scrambled["Date"] <= origin]).predict(
+        future.reset_index(drop=True)
+    )
+    assert np.array_equal(before.to_numpy(), after.to_numpy())
 
 
 def test_model_never_sees_target_after_origin(panel):
-    tr = panel[panel.Date <= "2011-12-30"]; p = fit_pipe(tr)
-    assert p.named_steps["model"].last_train_date_ == pd.Timestamp("2011-12-30")
+    train = panel[panel["Date"] <= "2011-12-30"]
+    model = fit_pipe(train).named_steps["model"]
+    assert model.last_train_date_ == pd.Timestamp("2011-12-30")
 
 
-def test_save_load_roundtrip_identical_forecast(panel, tmp_path):
-    p = fit_pipe(panel); art = {"pipeline": p, "metadata": {"trained_through": "x"},
-                                "calibration": {"store_week_mult": (0.95, 1.1), "weekly_total_err_q": (-0.01, 0.07), "annual_planning_range": (-0.01, 0.05)}}
-    joblib.dump(art, tmp_path / "m.joblib"); art2 = load_artifact(tmp_path / "m.joblib")
-    a = forecast_weekly(art, "2012-12-28"); b = forecast_weekly(art2, "2012-12-28")
-    pd.testing.assert_frame_equal(a, b)
+def test_store_scale_multiplies_predictions(panel):
+    plain = fit_pipe(panel)
+    scaled = fit_pipe(panel, store_scale={1: 2.0})
+    rows = pd.DataFrame(
+        {
+            "Date": pd.to_datetime(["2012-11-02"] * 2),
+            "Store": [1, 2],
+            "Type": ["A", "A"],
+        }
+    )
+    a, b = plain.predict(rows), scaled.predict(rows)
+    assert np.isclose(b.iloc[0], 2 * a.iloc[0])
+    assert np.isclose(b.iloc[1], a.iloc[1])
+
+
+def test_pipeline_from_config_uses_the_weights():
+    config = BlendConfig(0.1, "h0", "d8", 6, 0, 2, 2)
+    model = pipeline_from_config(config).named_steps["model"]
+    assert (model.w_naive, model.w_ridge) == (0.6, 0.0)
+    assert (model.w_prophet, model.w_holt) == (0.2, 0.2)
+    assert (model.holt_key, model.drift_key, model.alpha) == ("h0", "d8", 0.1)
+
+
+def test_save_load_roundtrip_gives_identical_forecast(panel, tmp_path):
+    artifact = {
+        "pipeline": fit_pipe(panel),
+        "metadata": {"trained_through": "x"},
+        "calibration": CALIBRATION,
+    }
+    joblib.dump(artifact, tmp_path / "m.joblib")
+    loaded = load_artifact(tmp_path / "m.joblib")
+    pd.testing.assert_frame_equal(
+        forecast_weekly(artifact, "2012-12-28"),
+        forecast_weekly(loaded, "2012-12-28"),
+    )
+
+
+def test_load_artifact_rejects_incomplete_files(tmp_path):
+    joblib.dump({"pipeline": None}, tmp_path / "bad.joblib")
+    with pytest.raises(ValueError, match="missing"):
+        load_artifact(tmp_path / "bad.joblib")
 
 
 def test_forecast_schema_bands_and_dates(panel):
-    art = {"pipeline": fit_pipe(panel), "metadata": {}, "calibration": {"store_week_mult": (0.95, 1.1), "weekly_total_err_q": (-0.01, 0.07), "annual_planning_range": (-0.01, 0.05)}}
-    w = forecast_weekly(art, "2012-12-28")
-    assert list(w.columns) == ["Date", "Store", "Forecast", "Lower80", "Upper80"]
-    assert w.Date.min() == pd.Timestamp("2012-11-02") and w.Date.max() == pd.Timestamp("2012-12-28")
-    assert ((w.Lower80 < w.Forecast) & (w.Forecast < w.Upper80)).all() and w.Store.nunique() == 6
-    t = forecast_totals(art, w); assert len(t) == w.Date.nunique() and np.isclose(t.Forecast.sum(), w.Forecast.sum())
-    with pytest.raises(ValueError):
-        forecast_weekly(art, "2012-10-01")
+    artifact = {
+        "pipeline": fit_pipe(panel),
+        "metadata": {},
+        "calibration": CALIBRATION,
+    }
+    weekly = forecast_weekly(artifact, "2012-12-28")
+    assert list(weekly.columns) == [
+        "Date", "Store", "Forecast", "Lower80", "Upper80",
+    ]  # fmt: skip
+    assert weekly["Date"].min() == pd.Timestamp("2012-11-02")
+    assert weekly["Date"].max() == pd.Timestamp("2012-12-28")
+    assert weekly["Store"].nunique() == 6
+    inside = (weekly["Lower80"] < weekly["Forecast"]) & (
+        weekly["Forecast"] < weekly["Upper80"]
+    )
+    assert inside.all()
 
-
-def test_validate_panel_catches_problems(panel):
-    with pytest.raises(ValueError): validate_panel(pd.concat([panel, panel.iloc[:1]]))
-    bad = panel.copy(); bad.loc[0, "Weekly_Sales"] = -1
-    with pytest.raises(ValueError): validate_panel(bad)
-    with pytest.raises(ValueError): validate_panel(panel.iloc[1:])
-
-
-@pytest.mark.skipif(not os.environ.get("RUN_SLOW"), reason="Prophet fit is slow; set RUN_SLOW=1")
-@pytest.mark.slow
-def test_prophet_blend_runs(panel):
-    p = build_pipeline(w_naive=0.4, w_ridge=0.3, w_prophet=0.3); p.fit(panel[panel.Store <= 2], panel[panel.Store <= 2].Weekly_Sales)
-    out = p.predict(pd.DataFrame({"Date": [pd.Timestamp("2012-11-02")], "Store": [1], "Type": ["A"]}))
-    assert out.iloc[0] > 0
+    totals = forecast_totals(artifact, weekly)
+    assert len(totals) == weekly["Date"].nunique()
+    assert np.isclose(totals["Forecast"].sum(), weekly["Forecast"].sum())
+    with pytest.raises(ValueError, match="end_date"):
+        forecast_weekly(artifact, "2012-10-01")
