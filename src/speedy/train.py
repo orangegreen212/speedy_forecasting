@@ -25,6 +25,28 @@ def write_json(path: Path, content: dict) -> None:
     path.write_text(json.dumps(content, indent=2, default=float))
 
 
+def fit_artifact(panel, result) -> dict:
+    """Fit the chosen blend on all data; return the model with metadata."""
+    pipeline = pipeline_from_config(
+        BlendConfig(*result["final_cfg"]), result["store_scale"]
+    )
+    pipeline.fit(panel, panel["Weekly_Sales"])
+    metadata = {
+        "version": __version__,
+        "trained_through": str(panel["Date"].max().date()),
+        "n_weeks": int(panel["Date"].nunique()),
+        "n_stores": int(panel["Store"].nunique()),
+        "sklearn": sklearn.__version__,
+        "python": platform.python_version(),
+        "params": pipeline.named_steps["model"].get_params(),
+    }
+    return {
+        "pipeline": pipeline,
+        "metadata": metadata,
+        "calibration": result["calibration"],
+    }
+
+
 def train_and_save(
     data_dir=DATA_DIR,
     model_dir=MODEL_DIR,
@@ -45,25 +67,8 @@ def train_and_save(
     )
     arrays = result.pop("_arrays")
 
-    pipeline = pipeline_from_config(
-        BlendConfig(*result["final_cfg"]), result["store_scale"]
-    )
-    pipeline.fit(panel, panel["Weekly_Sales"])
-    metadata = {
-        "version": __version__,
-        "trained_through": str(panel["Date"].max().date()),
-        "n_weeks": int(panel["Date"].nunique()),
-        "n_stores": int(panel["Store"].nunique()),
-        "sklearn": sklearn.__version__,
-        "python": platform.python_version(),
-        "params": pipeline.named_steps["model"].get_params(),
-    }
-    artifact = {
-        "pipeline": pipeline,
-        "metadata": metadata,
-        "calibration": result["calibration"],
-    }
-    result["metadata"] = metadata
+    artifact = fit_artifact(panel, result)
+    result["metadata"] = artifact["metadata"]
 
     model_dir, out_dir = Path(model_dir), Path(out_dir)
     model_dir.mkdir(parents=True, exist_ok=True)
