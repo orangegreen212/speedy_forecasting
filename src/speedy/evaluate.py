@@ -486,7 +486,13 @@ def run_evaluation(
         },
         "oof_ci": {
             stat: block_bootstrap(actual, all_forecasts, stat, n=n_boot)
-            for stat in ("WMAPE", "Bias", "Weekly_total_MAPE")
+            for stat in (
+                "MAE",
+                "RMSE",
+                "WMAPE",
+                "Bias",
+                "Weekly_total_MAPE",
+            )
         },
     }
     skill = block_bootstrap(

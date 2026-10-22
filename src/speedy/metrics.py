@@ -14,6 +14,8 @@ def metrics(actual: pd.DataFrame, forecast: pd.DataFrame) -> dict:
     error = forecast - actual
     total = actual.sum().sum()
     return {
+        "MAE": float(np.abs(error).to_numpy().mean()),
+        "RMSE": float(np.sqrt((error**2).to_numpy().mean())),
         "WMAPE": float(np.abs(error).sum().sum() / total),
         "MAPE": float((np.abs(error) / actual).mean().mean()),
         "Bias": float(error.sum().sum() / total),
@@ -29,6 +31,19 @@ def wmape(actual, forecast) -> float:
     return np.abs(forecast - actual).sum() / actual.sum()
 
 
+def mae(actual, forecast) -> float:
+    """Mean absolute error per store-week, in sales units (USD)."""
+    return np.abs(forecast - actual).mean()
+
+
+def rmse(actual, forecast) -> float:
+    """Root mean squared error per store-week, in sales units (USD).
+
+    Squaring punishes big misses (holiday weeks) more than MAE does.
+    """
+    return np.sqrt(((forecast - actual) ** 2).mean())
+
+
 def bias(actual, forecast) -> float:
     return (forecast - actual).sum() / actual.sum()
 
@@ -39,6 +54,8 @@ def weekly_total_mape(actual, forecast) -> float:
 
 
 STATISTICS = {
+    "MAE": mae,
+    "RMSE": rmse,
     "WMAPE": wmape,
     "Bias": bias,
     "Weekly_total_MAPE": weekly_total_mape,

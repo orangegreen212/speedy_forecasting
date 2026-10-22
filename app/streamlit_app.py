@@ -145,14 +145,34 @@ def line_layers(history, forecast, zoom_start, unit):
     return alt.layer(band, lines, divider, label).properties(height=380)
 
 
-def accuracy_bars(evaluation: dict):
-    """Store-week error of each model with its 95% interval (from zero)."""
+METRICS = {
+    "WMAPE": {
+        "title": "Typical error of one store-week (WMAPE)",
+        "format": ".1%",
+        "axis": "%",
+    },
+    "MAE": {
+        "title": "MAE: average miss of one store-week (USD)",
+        "format": ",.0f",
+        "axis": ",.0f",
+    },
+    "RMSE": {
+        "title": "RMSE: like MAE, but big misses count more (USD)",
+        "format": ",.0f",
+        "axis": ",.0f",
+    },
+}
+
+
+def accuracy_bars(evaluation: dict, stat: str = "WMAPE"):
+    """Error of each model with its 95% interval (from zero)."""
+    spec = METRICS[stat]
     rows = [
         {
             "Model": MODEL_NAMES[name],
-            "Error": evaluation["oof_ci"]["WMAPE"][name][0],
-            "Low": evaluation["oof_ci"]["WMAPE"][name][1],
-            "High": evaluation["oof_ci"]["WMAPE"][name][2],
+            "Error": evaluation["oof_ci"][stat][name][0],
+            "Low": evaluation["oof_ci"][stat][name][1],
+            "High": evaluation["oof_ci"][stat][name][2],
             "Ours": name == "blend_walk_forward",
         }
         for name in MODEL_NAMES
@@ -170,8 +190,8 @@ def accuracy_bars(evaluation: dict):
     bars = base.mark_bar().encode(
         x=alt.X(
             "Error:Q",
-            title="Typical error of one store-week (WMAPE)",
-            axis=alt.Axis(format="%", tickCount=8),
+            title=spec["title"],
+            axis=alt.Axis(format=spec["axis"], tickCount=8),
         ),
         color=alt.condition(
             alt.datum.Ours,
@@ -180,16 +200,33 @@ def accuracy_bars(evaluation: dict):
         ),
         tooltip=[
             alt.Tooltip("Model:N"),
-            alt.Tooltip("Error:Q", format=".1%"),
-            alt.Tooltip("Low:Q", title="95% low", format=".1%"),
-            alt.Tooltip("High:Q", title="95% high", format=".1%"),
+            alt.Tooltip("Error:Q", format=spec["format"]),
+            alt.Tooltip("Low:Q", title="95% low", format=spec["format"]),
+            alt.Tooltip("High:Q", title="95% high", format=spec["format"]),
         ],
     )
     whiskers = base.mark_rule(color="#1f2933").encode(x="Low:Q", x2="High:Q")
     labels = base.mark_text(align="left", dx=6, color="#1f2933").encode(
-        x="High:Q", text=alt.Text("Error:Q", format=".1%")
+        x="High:Q", text=alt.Text("Error:Q", format=spec["format"])
     )
     return alt.layer(bars, whiskers, labels).properties(height=220)
+
+
+def base_vs_ours_table(evaluation: dict) -> pd.DataFrame:
+    """MAE, RMSE and WMAPE of the base model and ours, side by side."""
+    metrics = evaluation["oof_metrics"]
+    base, ours = metrics["seasonal_naive"], metrics["blend_walk_forward"]
+    rows = []
+    for stat in ("MAE", "RMSE", "WMAPE"):
+        rows.append(
+            {
+                "Metric": stat,
+                "Base (same as last year)": base[stat],
+                "Our forecast (blend)": ours[stat],
+                "Change": ours[stat] / base[stat] - 1,
+            }
+        )
+    return pd.DataFrame(rows).set_index("Metric")
 
 
 def quarter_bars(evaluation: dict):
@@ -388,8 +425,52 @@ with tab_accuracy:
         "To test the model we pretended not to know the last 65 weeks and "
         "forecast them, then compared with what really happened."
     )
-    st.markdown("**1. Is our forecast better than a simple one?**")
-    st.altair_chart(accuracy_bars(evaluation), use_container_width=True)
+    st.markdown("**1. Base model vs our forecast: MAE and RMSE**")
+    scores = evaluation["oof_metrics"]
+    base_scores = scores["seasonal_naive"]
+    our_scores = scores["blend_walk_forward"]
+    ci = evaluation["oof_ci"]
+    cols = st.columns(2)
+    for col, stat in zip(cols, ("MAE", "RMSE"), strict=True):
+        change = our_scores[stat] / base_scores[stat] - 1
+        col.metric(
+            f"{stat}, our forecast",
+            f"USD {our_scores[stat]:,.0f}",
+            delta=f"{change:+.1%} vs base (USD {base_scores[stat]:,.0f})",
+            delta_color="inverse",
+            help=f"Per store-week. 95% interval: "
+            f"USD {ci[stat]['blend_walk_forward'][1]:,.0f} to "
+            f"USD {ci[stat]['blend_walk_forward'][2]:,.0f}. "
+            "Base = 'same as last year'.",
+        )
+    compare = base_vs_ours_table(evaluation).reset_index()
+    shown = compare.copy()
+    for column in ("Base (same as last year)", "Our forecast (blend)"):
+        shown[column] = [
+            f"{v:.2%}" if m == "WMAPE" else f"USD {v:,.0f}"
+            for m, v in zip(compare["Metric"], compare[column], strict=True)
+        ]
+    shown["Change"] = compare["Change"].map("{:+.1%}".format)
+    st.dataframe(shown, hide_index=True, use_container_width=True)
+    st.caption(
+        "MAE and RMSE are in dollars per store-week (lower is better). "
+        "RMSE is always larger than MAE; the more it differs from MAE, "
+        "the more the model misses by a lot in a few weeks (holidays). "
+        "WMAPE is the same error as a share of sales."
+    )
+    st.markdown("**2. Is our forecast better than a simple one?**")
+    stat = st.radio(
+        "Metric",
+        list(METRICS),
+        horizontal=True,
+        format_func=lambda k: {
+            "WMAPE": "WMAPE (%)",
+            "MAE": "MAE (USD)",
+            "RMSE": "RMSE (USD)",
+        }[k],
+        label_visibility="collapsed",
+    )
+    st.altair_chart(accuracy_bars(evaluation, stat), use_container_width=True)
     gain = evaluation["oof_skill_vs_naive_WMAPE_diff"]["naive_minus_blend"]
     st.caption(
         "Lower is better. The black line is the 95% range of the number. "
@@ -397,14 +478,14 @@ with tab_accuracy:
         f"last year' ({gain[1] * 100:.1f} to {gain[2] * 100:.1f}), "
         "so the gain is real."
     )
-    st.markdown("**2. Is the forecast too high or too low?**")
+    st.markdown("**3. Is the forecast too high or too low?**")
     st.altair_chart(quarter_bars(evaluation), use_container_width=True)
     st.caption(
         "Blue bars: the real sales were higher than forecast. In the "
         "first four blocks the forecast was too low, so the number is on the "
         "cautious side. In the last block it was 0.2% too high."
     )
-    st.markdown("**3. Things to keep in mind**")
+    st.markdown("**4. Things to keep in mind**")
     holiday = evaluation["holiday_weeks"]
     check = evaluation["coverage_check"]
     st.markdown(
@@ -426,10 +507,14 @@ with tab_accuracy:
             row_data = {"Model": model}
             for stat, table_ci in evaluation["oof_ci"].items():
                 value, low, high = table_ci[model]
-                row_data[stat] = f"{value:.2%} [{low:.2%}, {high:.2%}]"
+                if stat in ("MAE", "RMSE"):
+                    row_data[stat] = f"{value:,.0f} [{low:,.0f}, {high:,.0f}]"
+                else:
+                    row_data[stat] = f"{value:.2%} [{low:.2%}, {high:.2%}]"
             rows.append(row_data)
         st.dataframe(pd.DataFrame(rows).set_index("Model"))
         st.caption(
+            "MAE and RMSE are in USD per store-week. "
             "Bias = (forecast - actual) / actual. Negative means the "
             "forecast was too low."
         )

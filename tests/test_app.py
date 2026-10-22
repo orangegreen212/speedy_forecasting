@@ -16,6 +16,6 @@ def test_app_runs_from_bundle_only(entry):
 
     app = AppTest.from_file(str(ROOT / entry), default_timeout=60).run()
     assert not app.exception
-    assert len(app.metric) == 5
+    assert len(app.metric) == 7
     assert len(app.tabs) == 4
     assert all("$" not in m.value for m in app.metric)
