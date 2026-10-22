@@ -51,8 +51,13 @@ def usd(value: float) -> str:
     return f"USD {value / 1e6:,.0f}M"
 
 
+def bundle_version() -> tuple:
+    """Changes whenever a bundle file changes, so the cache is refreshed."""
+    return tuple((BUNDLE / n).stat().st_mtime_ns for n in REQUIRED)
+
+
 @st.cache_data
-def load_bundle():
+def load_bundle(version: tuple):
     by_store = pd.read_csv(
         BUNDLE / "forecast_by_store.csv", parse_dates=["Date"]
     )
@@ -271,7 +276,7 @@ def quarter_bars(evaluation: dict):
     )
 
 
-by_store, total, actuals, evaluation = load_bundle()
+by_store, total, actuals, evaluation = load_bundle(bundle_version())
 meta = evaluation["metadata"]
 year = int(total["Date"].dt.year.max())
 in_year = total[total["Date"].dt.year == year]
