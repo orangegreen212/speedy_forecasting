@@ -426,42 +426,51 @@ with tab_accuracy:
         "forecast them, then compared with what really happened."
     )
     st.markdown("**1. Base model vs our forecast: MAE and RMSE**")
-    scores = evaluation["oof_metrics"]
-    base_scores = scores["seasonal_naive"]
-    our_scores = scores["blend_walk_forward"]
-    ci = evaluation["oof_ci"]
-    cols = st.columns(2)
-    for col, stat in zip(cols, ("MAE", "RMSE"), strict=True):
-        change = our_scores[stat] / base_scores[stat] - 1
-        col.metric(
-            f"{stat}, our forecast",
-            f"USD {our_scores[stat]:,.0f}",
-            delta=f"{change:+.1%} vs base (USD {base_scores[stat]:,.0f})",
-            delta_color="inverse",
-            help=f"Per store-week. 95% interval: "
-            f"USD {ci[stat]['blend_walk_forward'][1]:,.0f} to "
-            f"USD {ci[stat]['blend_walk_forward'][2]:,.0f}. "
-            "Base = 'same as last year'.",
+    if "MAE" not in evaluation["oof_metrics"]["seasonal_naive"]:
+        st.warning(
+            "evaluation.json has no MAE/RMSE. Commit the new "
+            "app_artifacts/evaluation.json (or run python -m speedy.train)."
         )
-    compare = base_vs_ours_table(evaluation).reset_index()
-    shown = compare.copy()
-    for column in ("Base (same as last year)", "Our forecast (blend)"):
-        shown[column] = [
-            f"{v:.2%}" if m == "WMAPE" else f"USD {v:,.0f}"
-            for m, v in zip(compare["Metric"], compare[column], strict=True)
-        ]
-    shown["Change"] = compare["Change"].map("{:+.1%}".format)
-    st.dataframe(shown, hide_index=True, use_container_width=True)
-    st.caption(
-        "MAE and RMSE are in dollars per store-week (lower is better). "
-        "RMSE is always larger than MAE; the more it differs from MAE, "
-        "the more the model misses by a lot in a few weeks (holidays). "
-        "WMAPE is the same error as a share of sales."
-    )
+    else:
+        scores = evaluation["oof_metrics"]
+        base_scores = scores["seasonal_naive"]
+        our_scores = scores["blend_walk_forward"]
+        ci = evaluation["oof_ci"]
+        cols = st.columns(2)
+        for col, stat in zip(cols, ("MAE", "RMSE"), strict=True):
+            change = our_scores[stat] / base_scores[stat] - 1
+            col.metric(
+                f"{stat}, our forecast",
+                f"USD {our_scores[stat]:,.0f}",
+                delta=f"{change:+.1%} vs base (USD {base_scores[stat]:,.0f})",
+                delta_color="inverse",
+                help=f"Per store-week. 95% interval: "
+                f"USD {ci[stat]['blend_walk_forward'][1]:,.0f} to "
+                f"USD {ci[stat]['blend_walk_forward'][2]:,.0f}. "
+                "Base = 'same as last year'.",
+            )
+        compare = base_vs_ours_table(evaluation).reset_index()
+        shown = compare.copy()
+        for column in ("Base (same as last year)", "Our forecast (blend)"):
+            shown[column] = [
+                f"{v:.2%}" if m == "WMAPE" else f"USD {v:,.0f}"
+                for m, v in zip(
+                    compare["Metric"], compare[column], strict=True
+                )
+            ]
+        shown["Change"] = compare["Change"].map("{:+.1%}".format)
+        st.dataframe(shown, hide_index=True, use_container_width=True)
+        st.caption(
+            "MAE and RMSE are in dollars per store-week (lower is better). "
+            "RMSE is always larger than MAE; the more it differs from MAE, "
+            "the more the model misses by a lot in a few weeks (holidays). "
+            "WMAPE is the same error as a share of sales."
+        )
     st.markdown("**2. Is our forecast better than a simple one?**")
+    available = [m for m in METRICS if m in evaluation["oof_ci"]]
     stat = st.radio(
         "Metric",
-        list(METRICS),
+        available,
         horizontal=True,
         format_func=lambda k: {
             "WMAPE": "WMAPE (%)",
