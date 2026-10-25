@@ -69,6 +69,61 @@ def load_bundle(version: tuple):
     return by_store, total, actuals, evaluation
 
 
+@st.cache_data
+def load_backtest(version: int):
+    """Backtest weeks: actual, baseline and our forecast per store-week."""
+    path = BUNDLE / "backtest_store_week.csv"
+    if not path.exists():
+        return None
+    return pd.read_csv(path, parse_dates=["Date"])
+
+
+def backtest_chart(backtest: pd.DataFrame, store, unit: str):
+    """Actual, baseline ("same as last year") and our forecast, per week."""
+    if store != "All stores":
+        backtest = backtest[backtest["Store"] == store]
+    weekly = backtest.groupby("Date", as_index=False)[
+        ["Actual", "Baseline", "Ours"]
+    ].sum()
+    weekly[["Actual", "Baseline", "Ours"]] /= 1e6
+    names = {
+        "Actual": "Actual",
+        "Baseline": "Baseline: same as last year",
+        "Ours": "Our forecast (blend)",
+    }
+    long = weekly.melt("Date", var_name="Series", value_name="Sales")
+    long["Series"] = long["Series"].map(names)
+    domain = list(names.values())
+    chart = (
+        alt.Chart(long)
+        .mark_line(strokeWidth=2)
+        .encode(
+            x=alt.X("Date:T", title=None, axis=alt.Axis(format="%b %Y")),
+            y=alt.Y("Sales:Q", title=unit, scale=alt.Scale(zero=False)),
+            color=alt.Color(
+                "Series:N",
+                scale=alt.Scale(
+                    domain=domain,
+                    range=[ACTUAL_COLOR, WARN_COLOR, FORECAST_COLOR],
+                ),
+                legend=alt.Legend(title=None, orient="top"),
+            ),
+            strokeDash=alt.StrokeDash(
+                "Series:N",
+                scale=alt.Scale(domain=domain, range=[[1, 0], [5, 4], [1, 0]]),
+                legend=None,
+            ),
+            tooltip=[
+                alt.Tooltip("Date:T"),
+                alt.Tooltip("Series:N"),
+                alt.Tooltip("Sales:Q", format=",.2f"),
+            ],
+        )
+        .properties(height=380)
+    )
+    return chart, weekly
+
+
 def growth_vs_last_year(by_store: pd.DataFrame, actuals: pd.DataFrame, year):
     """Forecast of `year` against the same weeks one year earlier.
 
@@ -326,33 +381,72 @@ with tab_company:
     st.markdown("**All 45 stores together, sales per week**")
     view = st.radio(
         "Show",
-        ["Whole history", "Last year and forecast"],
+        [
+            "Whole history",
+            "Last year and forecast",
+            "Test: actual vs baseline vs our forecast",
+        ],
         horizontal=True,
         label_visibility="collapsed",
     )
-    start = (
-        actuals["Date"].min()
-        if view == "Whole history"
-        else last_actual - pd.Timedelta(days=364)
-    )
-    history = (
-        actuals.groupby("Date", as_index=False)["Weekly_Sales"]
-        .sum()
-        .rename(columns={"Weekly_Sales": "Value"})
-    )
-    history["Value"] /= 1e6
-    forecast = total.copy()
-    for column in ("Forecast", "Lower80", "Upper80"):
-        forecast[column] = forecast[column] / 1e6
-    st.altair_chart(
-        line_layers(history, forecast, start, "Sales per week (USD M)"),
-        use_container_width=True,
-    )
-    st.caption(
-        "Dark line: real sales. Blue line: forecast. Light blue area: where "
-        "the weekly total will probably be (80% of the time). The two big "
-        "peaks every year are Thanksgiving and Christmas."
-    )
+    backtest = load_backtest(bundle_version()[0])
+    if view.startswith("Test"):
+        if backtest is None:
+            st.warning(
+                "Missing app_artifacts/backtest_store_week.csv. Commit it "
+                "(or run python -m speedy.train)."
+            )
+        else:
+            store_choice = st.selectbox(
+                "Store",
+                ["All stores"] + sorted(backtest["Store"].unique().tolist()),
+            )
+            chart, weekly = backtest_chart(
+                backtest, store_choice, "Sales per week (USD M)"
+            )
+            st.altair_chart(chart, use_container_width=True)
+            err = {
+                name: (weekly[name] - weekly["Actual"]).abs().mean()
+                for name in ("Baseline", "Ours")
+            }
+            label = (
+                "all stores"
+                if store_choice == "All stores"
+                else f"store {store_choice}"
+            )
+            st.caption(
+                "The last 65 weeks, forecast without knowing them. Dark "
+                "line: real sales. Orange dashed: baseline ('same as last "
+                "year'). Blue: our forecast. Average miss per week, "
+                f"{label}: "
+                f"baseline USD {err['Baseline']:.2f}M, "
+                f"ours USD {err['Ours']:.2f}M."
+            )
+    else:
+        start = (
+            actuals["Date"].min()
+            if view == "Whole history"
+            else last_actual - pd.Timedelta(days=364)
+        )
+        history = (
+            actuals.groupby("Date", as_index=False)["Weekly_Sales"]
+            .sum()
+            .rename(columns={"Weekly_Sales": "Value"})
+        )
+        history["Value"] /= 1e6
+        forecast = total.copy()
+        for column in ("Forecast", "Lower80", "Upper80"):
+            forecast[column] = forecast[column] / 1e6
+        st.altair_chart(
+            line_layers(history, forecast, start, "Sales per week (USD M)"),
+            use_container_width=True,
+        )
+        st.caption(
+            "Dark line: real sales. Blue line: forecast. Light blue area: "
+            "where the weekly total will probably be (80% of the time). The "
+            "two big peaks every year are Thanksgiving and Christmas."
+        )
+
 
 with tab_stores:
     growth, n_weeks = growth_vs_last_year(by_store, actuals, year)

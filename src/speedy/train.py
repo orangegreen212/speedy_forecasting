@@ -9,6 +9,7 @@ import platform
 from pathlib import Path
 
 import joblib
+import pandas as pd
 import sklearn
 
 from . import __version__
@@ -76,11 +77,15 @@ def train_and_save(
     joblib.dump(artifact, model_dir / "forecaster.joblib")
     write_json(out_dir / "data_quality.json", data_quality_report(data_dir))
     write_json(out_dir / "evaluation.json", result)
-    export_bundle(artifact, result, panel, Path(app_dir), end_date)
+    export_bundle(
+        artifact, result, panel, Path(app_dir), end_date, arrays=arrays
+    )
     return artifact, result, arrays
 
 
-def export_bundle(artifact, result, panel, bundle_dir, end_date) -> None:
+def export_bundle(
+    artifact, result, panel, bundle_dir, end_date, arrays=None
+) -> None:
     """Write everything the Streamlit app needs.
 
     The app then runs without the model, Prophet or the raw files: ready
@@ -94,6 +99,30 @@ def export_bundle(artifact, result, panel, bundle_dir, end_date) -> None:
     write_json(bundle_dir / "evaluation.json", result)
     actuals = panel[["Store", "Date", "Weekly_Sales"]]
     actuals.to_csv(bundle_dir / "actuals_store_week.csv", index=False)
+    if arrays is not None:
+        backtest_table(arrays).to_csv(
+            bundle_dir / "backtest_store_week.csv", index=False
+        )
+
+
+def backtest_table(arrays) -> pd.DataFrame:
+    """Backtest weeks: actual, baseline and our forecast per store-week.
+
+    Baseline = "same as last year" (seasonal naive). Our forecast = blend.
+    """
+
+    def long(table, name):
+        table = table.rename_axis(index="Date", columns="Store")
+        return table.stack().rename(name)
+
+    return pd.concat(
+        [
+            long(arrays["oof_actual"], "Actual"),
+            long(arrays["oof_benchmarks"]["seasonal_naive"], "Baseline"),
+            long(arrays["oof_blend"], "Ours"),
+        ],
+        axis=1,
+    ).reset_index()
 
 
 def parse_args(argv=None) -> argparse.Namespace:
