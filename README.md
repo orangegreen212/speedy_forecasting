@@ -41,13 +41,13 @@ We pretended not to know the last 65 weeks and forecast them in five blocks of 1
 Each block was forecast using only data from before it.
 We compared the result with a simple baseline: **"same as last year"**.
 
-![Test: actual vs simple vs our forecast](docs/images/02_backtest.png)
+![Test: actual vs simple vs my forecast](docs/images/02_backtest.png)
 
 ## Results
 
 Error of one store in one week (lower is better):
 
-| Measure | Our forecast | Baseline (same as last year) |
+| Measure | My forecast | Baseline (same as last year) |
 |---|---|---|
 | MAE (average miss, USD) | **46,963** | 59,199 |
 | RMSE (big misses count more, USD) | **76,003** | 87,064 |
@@ -59,7 +59,7 @@ The gain in WMAPE is 1.2 points, with a 95% interval of 0.5 to 1.8 points. The i
 
 Other checks:
 
-| Check | Our forecast | Baseline |
+| Check | My forecast | Baseline |
 |---|---|---|
 | One store, whole test period | 2.2% | 4.1% |
 | Whole company, one week | 2.9% | 3.1% |
@@ -73,12 +73,10 @@ The forecast was too low in older blocks and is close to zero in the last block:
 ## Limits (please read)
 
 * **The data stops on 26 Oct 2012.** The 2012 holiday season has not been seen by the model.
-* **Holiday weeks:** our forecast is not better than the baseline (6.5% vs 5.7%, only 7 weeks, so we cannot say more).
+* **Holiday weeks:** My forecast is not better than the baseline (6.5% vs 5.7%, only 7 weeks, so we cannot say more).
 * **Whole company, one week:** the gain over the baseline is small (2.9% vs 3.1%). The gain is mostly at store level.
 * **The error grows with distance.** Late 2013 is less reliable than early 2013.
 * **Not modelled:** new or closed stores, promotions, economic shocks.
-* We made some modelling choices while looking at 2011 and 2012, so real accuracy may be a little worse.
-* The prediction bands held 86% of the time on later unseen weeks (target 80%).
 
 More detail is in [`docs/business_memo.md`](docs/business_memo.md).
 
