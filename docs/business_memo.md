@@ -1,14 +1,16 @@
 # 2013 sales forecast: recommendation for the CFO
 
 ## Recommendation
-* **Use about $2.35B as the sales guidance for 4 Jan - 6 Dec 2013** (49
-  weeks, 45 stores): $2,348M. This is about 1.5% above the same Jan-Oct
-  weeks of 2012. Indicative 80% range: **$2.32B to $2.46B** (-1.2% to +4.9%
+* **Use about $2.54B as the sales guidance for 4 Jan - 27 Dec 2013** (52
+  weeks, 45 stores): $2,536M. This is about 1.5% above the same Jan-Oct
+  weeks of 2012. Indicative 80% range: **$2.51B to $2.66B** (-1.2% to +4.9%
   around the base). The range comes from only five quarters of errors: it is
   a guide, not a guarantee.
-* **This is not the full calendar year.** The task stops on 2013-12-10, so
-  the last three weeks of December, the biggest of the year, are not in
-  this number. Do not publish it as "2013 sales".
+* **Almost the full calendar year.** Only 28-31 December is missing. The
+  last three weeks (13, 20 and 27 Dec, $188M, 7% of the total) are the
+  least certain part: they were not produced by the full model (see
+  Technical notes). Do not publish the total as "2013 sales" until the
+  shadow run confirms them.
 * **Run in shadow mode until the Nov-Dec 2012 actuals arrive**, then decide
   whether to publish. The data stops on 26 Oct 2012, so the biggest weeks of
   the year have not been seen. Also, model choices were made while looking at
@@ -92,8 +94,16 @@ Only 2.7 years of history.
   against naive.
 * Leakage tests: changing all data after the forecast origin does not move
   the forecasts.
-* The "range" uses the spread of five quarterly errors for a 49-week total.
-  It is only a rough guide.
+* The "range" uses the spread of five quarterly errors, applied to the
+  52-week total. It is only a rough guide.
+* **Final 2013 run (weeks to 27 Dec).** Prophet could not be installed in
+  the build environment, so the run was done in two parts. Naive with drift
+  and damped Holt were recomputed with the repo code. For the 49 weeks to 6
+  Dec the Prophet part is backed out of the saved forecast (exact, as the
+  blend is a fixed weighted sum). For 13, 20 and 27 Dec the Prophet part is
+  scaled by the naive seasonal shape from 6 Dec. This is an approximation
+  and carries 20% weight only. Re-run `python -m speedy.score --end-date
+  2013-12-27` with Prophet installed to replace those three weeks.
 
 ## Likely questions
 * *Why not CPI or unemployment?* Their 2013 values are unknown today, and

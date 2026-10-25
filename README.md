@@ -1,6 +1,6 @@
 # Weekly Sales Forecast for 45 Stores
 
-This project forecasts weekly sales for 45 stores, from **2 Nov 2012 to 6 Dec 2013**.
+This project forecasts weekly sales for 45 stores, from **2 Nov 2012 to 27 Dec 2013**.
 It also tests how good the forecast is.
 
 ### 👉 [Open the live dashboard](https://teyfj8uksts3w2vt4idfzx.streamlit.app/)
@@ -11,12 +11,12 @@ It also tests how good the forecast is.
 
 | | |
 |---|---|
-| **Forecast for 4 Jan - 6 Dec 2013** (49 weeks) | **USD 2,348M** |
+| **Forecast for 4 Jan - 27 Dec 2013** (52 weeks) | **USD 2,536M** |
 | Compared with the same weeks of 2012 | about +1.5% |
-| Likely range (80%) | USD 2,319M to USD 2,463M |
+| Likely range (80%) | USD 2,506M to USD 2,660M |
 | Typical error for one store in one week | 4.4% |
 
-This is **not** the full year. The last weeks of December, the biggest of the year, are not in this number.
+This is almost the full year: only 28–31 December are missing. The last three weeks (13, 20 and 27 Dec) are estimated with a shortcut, see below.
 The range is based on only five test blocks, so use it as a guide, not as a promise.
 
 ## How the forecast works
@@ -76,6 +76,7 @@ The forecast was too low in older blocks and is close to zero in the last block:
 * **Holiday weeks:** My forecast is not better than the baseline (6.5% vs 5.7%, only 7 weeks, so we cannot say more).
 * **Whole company, one week:** the gain over the baseline is small (2.9% vs 3.1%). The gain is mostly at store level.
 * **The error grows with distance.** Late 2013 is less reliable than early 2013.
+* **13, 20 and 27 Dec 2013** use a shortcut for the Prophet part (20% weight): it is scaled by the naive seasonal shape. Naive and Holt are exact. Re-run with Prophet installed to replace them.
 * **Not modelled:** new or closed stores, promotions, economic shocks.
 
 More detail is in [`docs/business_memo.md`](docs/business_memo.md).
@@ -90,7 +91,7 @@ pip install -r requirements-dev.txt && pip install -e .
 # or: export SPEEDY_DATA_DIR=/path/to/folder
 
 python -m speedy.train                        # backtest, fit, save model and dashboard files
-python -m speedy.score --end-date 2013-12-06  # forecast CSV files
+python -m speedy.score --end-date 2013-12-27  # forecast CSV files
 streamlit run app.py                          # dashboard on your computer
 python docs/make_figures.py                   # redraw the pictures in this README
 pytest -q                                     # tests

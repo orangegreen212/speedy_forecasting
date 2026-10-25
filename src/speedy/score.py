@@ -1,6 +1,6 @@
 """Scoring command.
 
-python -m speedy.score --end-date 2013-12-06 [--model PATH]
+python -m speedy.score --end-date 2013-12-27 [--model PATH]
                        [--out-dir DIR]
 """
 

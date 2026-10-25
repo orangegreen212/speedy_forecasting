@@ -4,7 +4,7 @@ Self-contained: it reads only ../app_artifacts/ (ready forecasts, the
 evaluation and the weekly actuals). No model file, Prophet or raw data is
 needed, so it also runs on Streamlit Community Cloud.
 
-Money is written as "USD 2.35B" and not with a dollar sign, because two
+Money is written as "USD 2.54B" and not with a dollar sign, because two
 dollar signs in one text are shown as a formula by Streamlit.
 """
 
@@ -45,7 +45,7 @@ for name in REQUIRED:
 
 
 def usd(value: float) -> str:
-    """Money as text: USD 2.35B or USD 480M."""
+    """Money as text: USD 2.54B or USD 480M."""
     if abs(value) >= 1e9:
         return f"USD {value / 1e9:,.2f}B"
     return f"USD {value / 1e6:,.0f}M"
@@ -355,7 +355,7 @@ col1.metric(
     usd(year_total),
     help=f"Sum of {len(in_year)} weekly forecasts, all stores "
     f"({in_year['Date'].min():%d %b} to {in_year['Date'].max():%d %b}). "
-    "The last 3 weeks of December are not included.",
+    "Only 28-31 December are not included.",
 )
 col2.metric(
     "Likely range (80%)",

@@ -19,7 +19,7 @@ from .evaluate import BlendConfig, run_evaluation
 from .inference import forecast_totals, forecast_weekly
 from .pipeline import pipeline_from_config
 
-END_DATE = "2013-12-06"
+END_DATE = "2013-12-27"
 
 
 def write_json(path: Path, content: dict) -> None:
